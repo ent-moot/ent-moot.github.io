@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Drawdown + Compound Interest Simulator</title>
+  <style>
+    :root{
+      --bg:#0b0f14; --panel:#111827; --panel2:#0f172a; --text:#e5e7eb; --muted:#9ca3af;
+      --line:#1f2937; --accent:#60a5fa; --accent2:#34d399; --warn:#fbbf24; --bad:#f87171;
+      --radius:14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    *{box-sizing:border-box}
+    body{margin:0; font-family:var(--sans); background:linear-gradient(180deg,var(--bg),#05070a); color:var(--text);}
+    header{
+      padding:18px 18px 10px;
+      border-bottom:1px solid var(--line);
+      position:sticky; top:0; background:rgba(11,15,20,.85); backdrop-filter: blur(8px);
+      z-index:10;
+    }
+    header h1{margin:0; font-size:18px; font-weight:700}
+    header p{margin:6px 0 0; color:var(--muted); font-size:13px}
+
+    main{padding:18px; max-width:1200px; margin:0 auto;}
+    .grid{
+      display:grid;
+      grid-template-columns: 380px 1fr;
+      gap:14px;
+      align-items:start;
+    }
+    @media (max-width: 980px){
+      .grid{grid-template-columns:1fr}
+    }
+
+    .card{
+      background:linear-gradient(180deg,var(--panel),var(--panel2));
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      padding:14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+    .card h2{margin:0 0 10px; font-size:14px; color:#dbeafe; font-weight:700; letter-spacing:.2px}
+    .row{display:flex; gap:10px; align-items:center; margin:8px 0;}
+    .row > label{flex:1; color:var(--muted); font-size:12px}
+    .row > input, .row > select{
+      width: 180px;
+      padding:8px 10px;
+      border-radius:10px;
+      border:1px solid var(--line);
+      background:#0b1220;
+      color:var(--text);
+      outline:none;
+      font-size:13px;
+    }
+    .row > input:focus, .row > select:focus{border-color:#334155; box-shadow:0 0 0 3px rgba(96,165,250,.15)}
+    .hint{color:var(--muted); font-size:12px; margin:8px 0 0; line-height:1.35}
+    .btnbar{display:flex; gap:10px; margin-top:12px; flex-wrap:wrap}
+    button{
+      border:1px solid var(--line);
+      background:#0b1220;
+      color:var(--text);
+      border-radius:12px;
+      padding:10px 12px;
+      font-weight:650;
+      cursor:pointer;
+      transition:transform .03s ease, border-color .15s ease;
+    }
+    button:hover{border-color:#334155}
+    button:active{transform:translateY(1px)}
+    .primary{border-color:rgba(96,165,250,.5); background:rgba(96,165,250,.12)}
+    .ghost{opacity:.9}
+
+    .kpis{
+      display:grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap:10px;
+      margin-top:12px;
+    }
+    .kpi{
+      padding:10px 10px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:rgba(0,0,0,.15);
+    }
+    .kpi .label{color:var(--muted); font-size:11px}
+    .kpi .value{margin-top:6px; font-family:var(--mono); font-size:14px}
+    .value.bad{color:var(--bad)}
+    .value.warn{color:var(--warn)}
+    .value.good{color:var(--accent2)}
+
+    .chartWrap{position:relative}
+    canvas{
+      width:100%;
+      height:420px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background: radial-gradient(1000px 400px at 30% 10%, rgba(96,165,250,.12), transparent 60%),
+                  radial-gradient(900px 340px at 80% 40%, rgba(52,211,153,.10), transparent 60%),
+                  rgba(0,0,0,.18);
+      display:block;
+    }
+    .legend{
+      display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:10px; color:var(--muted); font-size:12px;
+    }
+    .dot{width:10px; height:10px; border-radius:999px; display:inline-block; margin-right:6px}
+    .dot.bal{background:var(--accent)}
+    .dot.dd{background:var(--accent2)}
+    .dot.grid{background:#334155}
+    .legend label{display:flex; align-items:center; gap:6px; cursor:pointer}
+    .legend input{accent-color: var(--accent)}
+    .table{
+      width:100%;
+      border-collapse:collapse;
+      margin-top:12px;
+      font-size:12px;
+    }
+    .table th, .table td{
+      text-align:left;
+      padding:8px 10px;
+      border-bottom:1px solid rgba(31,41,55,.8);
+      vertical-align:top;
+      font-family:var(--mono);
+    }
+    .table th{color:#c7d2fe; font-weight:800; font-family:var(--sans)}
+    .mono{font-family:var(--mono)}
+    .small{font-size:12px; color:var(--muted)}
+    .hr{height:1px; background:var(--line); margin:12px 0}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Compound Interest + Inflation-Adjusted Drawdown (Monthly)</h1>
+    <p>Simulates £600,000 growing at returns while withdrawing an inflation-adjusted £32,000/year over 25 years.</p>
+  </header>
+
+  <main>
+    <div class="grid">
+      <!-- Controls -->
+      <section class="card">
+        <h2>Inputs</h2>
+
+        <div class="row">
+          <label>Initial balance (£)</label>
+          <input id="initialBalance" type="number" min="0" step="1000" value="600000">
+        </div>
+
+        <div class="row">
+          <label>Base drawdown (per year, £)</label>
+          <input id="baseDrawdown" type="number" min="0" step="500" value="32000">
+        </div>
+
+        <div class="row">
+          <label>Horizon (years)</label>
+          <input id="years" type="number" min="1" step="1" value="25">
+        </div>
+
+        <div class="row">
+          <label>Scheme</label>
+          <select id="scheme">
+            <option value="constant">A) Constant (5% return, 2% inflation)</option>
+            <option value="random">B) Random yearly (bounded, mean-normalized)</option>
+          </select>
+        </div>
+
+        <div id="constantPanel">
+          <div class="hr"></div>
+          <h2>Constant rates</h2>
+          <div class="row">
+            <label>Annual return (%)</label>
+            <input id="constReturn" type="number" step="0.1" value="5">
+          </div>
+          <div class="row">
+            <label>Annual inflation (%)</label>
+            <input id="constInfl" type="number" step="0.1" value="2">
+          </div>
+          <p class="hint">
+            Monthly equivalent rate uses: <span class="mono">(1 + r)<sup>1/12</sup> - 1</span>
+          </p>
+        </div>
+
+        <div id="randomPanel" style="display:none;">
+          <div class="hr"></div>
+          <h2>Random yearly rates</h2>
+
+          <div class="row">
+            <label>Target mean return (%)</label>
+            <input id="meanReturn" type="number" step="0.1" value="5">
+          </div>
+          <div class="row">
+            <label>Return range (%)</label>
+            <input id="minReturn" type="number" step="0.1" value="0" title="Min return">
+            <input id="maxReturn" type="number" step="0.1" value="30" title="Max return">
+          </div>
+
+          <div class="row">
+            <label>Target mean inflation (%)</label>
+            <input id="meanInfl" type="number" step="0.1" value="2">
+          </div>
+          <div class="row">
+            <label>Inflation range (%)</label>
+            <input id="minInfl" type="number" step="0.1" value="0" title="Min inflation">
+            <input id="maxInfl" type="number" step="0.1" value="12" title="Max inflation">
+          </div>
+
+          <div class="row">
+            <label>Random seed</label>
+            <input id="seed" type="number" step="1" value="1">
+          </div>
+
+          <p class="hint">
+            Random yearly rates are generated within bounds, then <b>mean-normalized per run</b>:
+            we find a constant shift λ so that <span class="mono">mean(clamp(x + λ))</span> equals the target mean
+            while respecting the min/max range.
+          </p>
+        </div>
+
+        <div class="btnbar">
+          <button class="primary" id="runBtn">Run simulation</button>
+          <button class="ghost" id="randomiseSeedBtn" title="Pick a new random seed">Randomise seed</button>
+        </div>
+
+        <div class="kpis" id="kpis">
+          <div class="kpi">
+            <div class="label">Ending balance</div>
+            <div class="value mono" id="kpiEnd">—</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Minimum balance</div>
+            <div class="value mono" id="kpiMin">—</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Depletion time</div>
+            <div class="value mono" id="kpiDeplete">—</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Total withdrawals</div>
+            <div class="value mono" id="kpiWithd">—</div>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+        <div class="small">
+          Order per month: <b>1)</b> apply growth to balance, <b>2)</b> withdraw monthly drawdown, <b>3)</b> inflate drawdown for next month.
+        </div>
+      </section>
+
+      <!-- Chart + details -->
+      <section class="card">
+        <h2>Visualisation</h2>
+        <div class="chartWrap">
+          <canvas id="chart" width="1100" height="520"></canvas>
+        </div>
+        <div class="legend">
+          <span><span class="dot bal"></span>Balance</span>
+          <span><span class="dot dd"></span>Annual drawdown (scaled)</span>
+          <label style="margin-left:auto;">
+            <input type="checkbox" id="showDrawdown" checked>
+            Show drawdown line
+          </label>
+          <label>
+            <input type="checkbox" id="showGrid" checked>
+            Show grid
+          </label>
+        </div>
+
+        <table class="table" id="yearlyTable" aria-label="Yearly rates (random scheme only)" style="display:none;">
+          <thead>
+            <tr>
+              <th>Year</th>
+              <th>Return %</th>
+              <th>Inflation %</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    // ---------- Utilities ----------
+    const fmtGBP = new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 });
+    const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+
+    // Seeded RNG (Mulberry32)
+    function mulberry32(seed) {
+      let t = seed >>> 0;
+      return function() {
+        t += 0x6D2B79F5;
+        let r = Math.imul(t ^ (t >>> 15), 1 | t);
+        r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    // Triangular distribution sampler on [a,b] with mode c
+    function sampleTriangular(rng, a, b, c) {
+      a = Math.min(a, b); b = Math.max(a, b);
+      c = clamp(c, a, b);
+      const u = rng();
+      const fc = (c - a) / (b - a || 1);
+      if (u < fc) {
+        return a + Math.sqrt(u * (b - a) * (c - a));
+      } else {
+        return b - Math.sqrt((1 - u) * (b - a) * (b - c));
+      }
+    }
+
+    // Annual effective rate -> monthly effective rate
+    function annualToMonthly(rAnnual) {
+      return Math.pow(1 + rAnnual, 1/12) - 1;
+    }
+
+    // Project vector x into [min,max]^N while forcing arithmetic mean = targetMean.
+    // Returns y such that y_i = clamp(x_i + lambda, min, max), sum(y)=N*targetMean.
+    // Uses bisection on lambda (monotone).
+    function normalizeMeanBounded(x, min, max, targetMean, iters = 80) {
+      const n = x.length;
+      const targetSum = n * targetMean;
+
+      // Feasibility clamp: if target mean is impossible given bounds, clamp it.
+      const minSum = n * min;
+      const maxSum = n * max;
+      const feasibleTargetSum = clamp(targetSum, minSum, maxSum);
+
+      // Clamp once and early-out if already matches.
+      const y0 = x.map(v => clamp(v, min, max));
+      const s0 = y0.reduce((a,b)=>a+b, 0);
+      if (Math.abs(s0 - feasibleTargetSum) < 1e-12) return y0;
+
+      function sumWithLambda(lam) {
+        let s = 0;
+        for (let i=0;i<n;i++) s += clamp(x[i] + lam, min, max);
+        return s;
+      }
+
+      // Pick wide enough bracket for lambda so sum(lo) >= target >= sum(hi) is false; we expand until bracketed.
+      let lo = -1.0;
+      let hi =  1.0;
+
+      while (sumWithLambda(lo) > feasibleTargetSum) lo *= 2;
+      while (sumWithLambda(hi) < feasibleTargetSum) hi *= 2;
+
+      for (let k=0;k<iters;k++) {
+        const mid = (lo + hi) / 2;
+        const s = sumWithLambda(mid);
+        if (s < feasibleTargetSum) lo = mid;
+        else hi = mid;
+      }
+
+      const lambda = (lo + hi) / 2;
+      return x.map(v => clamp(v + lambda, min, max));
+    }
+
+    // ---------- Simulation ----------
+    function simulate(params) {
+      const {
+        initialBalance,
+        baseDrawdownAnnual,
+        years,
+        scheme,
+        constReturnAnnual,
+        constInflAnnual,
+        randomConfig
+      } = params;
+
+      const months = years * 12;
+
+      // Yearly rates arrays (length = years), in decimals.
+      let yearlyReturn = new Array(years).fill(constReturnAnnual);
+      let yearlyInfl = new Array(years).fill(constInflAnnual);
+
+      if (scheme === "random") {
+        const {
+          seed,
+          meanReturn, minReturn, maxReturn,
+          meanInfl, minInfl, maxInfl
+        } = randomConfig;
+
+        const rng = mulberry32(seed);
+
+        // Choose mode so expected mean equals target: mean = (a+b+mode)/3 => mode = 3*mean - a - b (then clamped)
+        const modeReturn = 3*meanReturn - minReturn - maxReturn;
+        const modeInfl   = 3*meanInfl   - minInfl   - maxInfl;
+
+        // 1) Generate initial random draws (bounded)
+        const rawReturn = Array.from({length: years}, () => sampleTriangular(rng, minReturn, maxReturn, modeReturn));
+        const rawInfl   = Array.from({length: years}, () => sampleTriangular(rng, minInfl,   maxInfl,   modeInfl));
+
+        // 2) Normalize so per-run arithmetic mean matches target (subject to feasibility)
+        yearlyReturn = normalizeMeanBounded(rawReturn, minReturn, maxReturn, meanReturn);
+        yearlyInfl   = normalizeMeanBounded(rawInfl,   minInfl,   maxInfl,   meanInfl);
+      }
+
+      // Convert yearly effective rates to monthly effective rates per year.
+      const yearlyReturnMonthly = yearlyReturn.map(r => annualToMonthly(r));
+      const yearlyInflMonthly   = yearlyInfl.map(r => annualToMonthly(r));
+
+      // Time series
+      const balance = new Array(months + 1).fill(0);
+      const drawdownAnnual = new Array(months + 1).fill(0);
+      balance[0] = initialBalance;
+      drawdownAnnual[0] = baseDrawdownAnnual;
+
+      let totalWithdrawals = 0;
+      let minBal = initialBalance;
+      let depletedAtMonth = null;
+
+      for (let m = 0; m < months; m++) {
+        const y = Math.floor(m / 12);
+        const rM = yearlyReturnMonthly[y];
+        const iM = yearlyInflMonthly[y];
+
+        // 1) growth
+        let bal = balance[m] * (1 + rM);
+
+        // 2) withdraw (annual drawdown / 12)
+        const wd = drawdownAnnual[m] / 12;
+        totalWithdrawals += Math.min(wd, bal); // if near zero, withdraw what's possible (accounting)
+        bal = bal - wd;
+
+        if (bal <= 0 && depletedAtMonth === null) {
+          depletedAtMonth = m + 1; // after this month's withdrawal
+          bal = 0;
+        } else if (bal < 0) {
+          bal = 0;
+        }
+
+        // 3) inflate drawdown for next month
+        const nextDD = drawdownAnnual[m] * (1 + iM);
+
+        balance[m + 1] = bal;
+        drawdownAnnual[m + 1] = nextDD;
+
+        minBal = Math.min(minBal, bal);
+      }
+
+      return {
+        months,
+        years,
+        balance,
+        drawdownAnnual,
+        yearlyReturn,
+        yearlyInfl,
+        totalWithdrawals,
+        minBal,
+        depletedAtMonth
+      };
+    }
+
+    // ---------- Charting (Canvas) ----------
+    function drawChart(canvas, series) {
+      const ctx = canvas.getContext("2d");
+      const W = canvas.width, H = canvas.height;
+      ctx.clearRect(0,0,W,H);
+
+      const padL = 60, padR = 18, padT = 18, padB = 48;
+      const plotW = W - padL - padR;
+      const plotH = H - padT - padB;
+
+      const showDD = document.getElementById("showDrawdown").checked;
+      const showGrid = document.getElementById("showGrid").checked;
+
+      const bal = series.balance;
+      const dd = series.drawdownAnnual;
+
+      const maxBal = Math.max(...bal);
+
+      // Drawdown is in £/year; scale it to visually compare (not the same unit).
+      const maxDD = Math.max(...dd);
+      const ddScale = maxDD > 0 ? (0.4 * maxBal / maxDD) : 0;
+
+      const maxY = maxBal;
+      const minY = 0;
+
+      function xOf(i) {
+        return padL + (i / (bal.length - 1)) * plotW;
+      }
+      function yOf(v) {
+        const t = (v - minY) / (maxY - minY || 1);
+        return padT + (1 - t) * plotH;
+      }
+
+      // Grid + axes
+      if (showGrid) {
+        ctx.strokeStyle = "rgba(51,65,85,.55)";
+        ctx.lineWidth = 1;
+
+        const vLines = 10;
+        for (let i=0;i<=vLines;i++){
+          const x = padL + (i/vLines)*plotW;
+          ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT+plotH); ctx.stroke();
+        }
+
+        const hLines = 6;
+        for (let i=0;i<=hLines;i++){
+          const y = padT + (i/hLines)*plotH;
+          ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL+plotW, y); ctx.stroke();
+        }
+      }
+
+      // Y labels (0..maxBal)
+      ctx.fillStyle = "rgba(229,231,235,.9)";
+      ctx.font = "12px " + getComputedStyle(document.documentElement).getPropertyValue("--mono");
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+
+      const hLines = 6;
+      for (let i=0;i<=hLines;i++){
+        const t = 1 - i/hLines;
+        const v = minY + t*(maxY-minY);
+        const y = padT + i/hLines * plotH;
+        ctx.fillText(fmtGBP.format(v), padL-10, y);
+      }
+
+      // X labels (years)
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      const totalYears = series.years;
+      for (let y=0; y<=totalYears; y+=5) {
+        const i = y*12;
+        const x = xOf(clamp(i, 0, bal.length-1));
+        ctx.fillStyle = "rgba(156,163,175,.95)";
+        ctx.fillText(`${y}y`, x, padT + plotH + 10);
+      }
+
+      // Balance line
+      ctx.strokeStyle = "rgba(96,165,250,.95)";
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      for (let i=0;i<bal.length;i++){
+        const x = xOf(i);
+        const y = yOf(bal[i]);
+        if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+
+      // Drawdown line (scaled)
+      if (showDD) {
+        ctx.strokeStyle = "rgba(52,211,153,.9)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i=0;i<dd.length;i++){
+          const vScaled = dd[i] * ddScale;
+          const x = xOf(i);
+          const y = yOf(vScaled);
+          if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+        ctx.stroke();
+      }
+
+      // Border
+      ctx.strokeStyle = "rgba(31,41,55,.9)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(padL, padT, plotW, plotH);
+
+      // Note
+      ctx.fillStyle = "rgba(156,163,175,.9)";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "bottom";
+      const note = showDD ? "Drawdown line is scaled for display (not same units as balance)." : "";
+      ctx.fillText(note, padL, padT - 4);
+    }
+
+    // ---------- UI wiring ----------
+    const el = (id) => document.getElementById(id);
+
+    function getParamsFromUI() {
+      const scheme = el("scheme").value;
+
+      const initialBalance = Number(el("initialBalance").value);
+      const baseDrawdownAnnual = Number(el("baseDrawdown").value);
+      const years = Math.max(1, Math.floor(Number(el("years").value)));
+
+      const constReturnAnnual = Number(el("constReturn").value) / 100;
+      const constInflAnnual = Number(el("constInfl").value) / 100;
+
+      const randomConfig = {
+        seed: Math.floor(Number(el("seed").value) || 1),
+        meanReturn: Number(el("meanReturn").value) / 100,
+        minReturn: Number(el("minReturn").value) / 100,
+        maxReturn: Number(el("maxReturn").value) / 100,
+        meanInfl: Number(el("meanInfl").value) / 100,
+        minInfl: Number(el("minInfl").value) / 100,
+        maxInfl: Number(el("maxInfl").value) / 100,
+      };
+
+      return { initialBalance, baseDrawdownAnnual, years, scheme, constReturnAnnual, constInflAnnual, randomConfig };
+    }
+
+    function setPanels() {
+      const scheme = el("scheme").value;
+      el("constantPanel").style.display = scheme === "constant" ? "" : "none";
+      el("randomPanel").style.display = scheme === "random" ? "" : "none";
+      el("yearlyTable").style.display = scheme === "random" ? "" : "none";
+    }
+
+    function monthToLabel(m) {
+      const year = Math.floor((m-1) / 12) + 1;
+      const mon = ((m-1) % 12) + 1;
+      return `Year ${year}, Month ${mon}`;
+    }
+
+    function renderKPIs(res) {
+      el("kpiEnd").textContent = fmtGBP.format(res.balance[res.balance.length - 1]);
+      el("kpiMin").textContent = fmtGBP.format(res.minBal);
+
+      if (res.depletedAtMonth == null) {
+        el("kpiDeplete").textContent = "Not depleted";
+        el("kpiDeplete").className = "value mono good";
+      } else {
+        el("kpiDeplete").textContent = monthToLabel(res.depletedAtMonth);
+        el("kpiDeplete").className = "value mono bad";
+      }
+
+      el("kpiWithd").textContent = fmtGBP.format(res.totalWithdrawals);
+
+      const endBal = res.balance[res.balance.length - 1];
+      el("kpiEnd").className = "value mono " + (endBal <= 0 ? "bad" : endBal < 200000 ? "warn" : "good");
+      el("kpiMin").className = "value mono " + (res.minBal <= 0 ? "bad" : res.minBal < 200000 ? "warn" : "good");
+    }
+
+    function renderYearlyTable(res) {
+      const tbody = el("yearlyTable").querySelector("tbody");
+      tbody.innerHTML = "";
+      for (let y=0; y<res.years; y++) {
+        const tr = document.createElement("tr");
+        const tdY = document.createElement("td");
+        const tdR = document.createElement("td");
+        const tdI = document.createElement("td");
+        tdY.textContent = String(y+1);
+        tdR.textContent = (res.yearlyReturn[y] * 100).toFixed(2) + "%";
+        tdI.textContent = (res.yearlyInfl[y] * 100).toFixed(2) + "%";
+        tr.appendChild(tdY); tr.appendChild(tdR); tr.appendChild(tdI);
+        tbody.appendChild(tr);
+      }
+    }
+
+    function runAndRender() {
+      const params = getParamsFromUI();
+
+      if (!(params.initialBalance >= 0) || !(params.baseDrawdownAnnual >= 0)) {
+        alert("Please enter non-negative numbers for balance and drawdown.");
+        return;
+      }
+      if (params.scheme === "random") {
+        const rc = params.randomConfig;
+        if (rc.minReturn > rc.maxReturn || rc.minInfl > rc.maxInfl) {
+          alert("Min must be <= Max for return/inflation ranges.");
+          return;
+        }
+      }
+
+      const res = simulate(params);
+      renderKPIs(res);
+
+      const canvas = el("chart");
+      drawChart(canvas, res);
+
+      if (params.scheme === "random") renderYearlyTable(res);
+    }
+
+    // Events
+    el("scheme").addEventListener("change", () => { setPanels(); runAndRender(); });
+    el("runBtn").addEventListener("click", runAndRender);
+    el("showDrawdown").addEventListener("change", runAndRender);
+    el("showGrid").addEventListener("change", runAndRender);
+
+    el("randomiseSeedBtn").addEventListener("click", () => {
+      el("seed").value = String(Math.floor(Math.random() * 1_000_000_000));
+      if (el("scheme").value !== "random") el("scheme").value = "random";
+      setPanels();
+      runAndRender();
+    });
+
+    // Auto-run on input changes (debounced)
+    [
+      "initialBalance","baseDrawdown","years",
+      "constReturn","constInfl",
+      "meanReturn","minReturn","maxReturn","meanInfl","minInfl","maxInfl","seed"
+    ].forEach(id => {
+      el(id).addEventListener("input", () => {
+        window.clearTimeout(window.__debounce);
+        window.__debounce = window.setTimeout(runAndRender, 150);
+      });
+    });
+
+    // Initial
+    setPanels();
+    runAndRender();
+  </script>
+</body>
+</html>
